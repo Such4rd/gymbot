@@ -1,7 +1,8 @@
 import sqlite3
+import os
 from datetime import datetime
 import logging
-import api
+import re
 from telegram import  ReplyKeyboardRemove, Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import (
     Application,
@@ -12,9 +13,9 @@ from telegram.ext import (
     ContextTypes,
     CallbackQueryHandler
 )
-import re
 
-TOKEN = api.TOKEN_API
+
+TOKEN = os.getenv('TOKEN')
 
 
 
@@ -23,7 +24,7 @@ TOKEN = api.TOKEN_API
 
 # Conexión a la base de datos
 def conectar_db():
-    return sqlite3.connect('c:\santi\gymbot\gym.db')
+    return sqlite3.connect('/app/gym.db')
 
 
 

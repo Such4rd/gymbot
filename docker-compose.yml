@@ -1,0 +1,11 @@
+version: '3.8'
+
+services:
+  gymbot:
+    build:
+      context: .
+    volumes:
+      - ./gym.db:/app/gym.db
+    environment:
+      - TOKEN=${TOKEN}  # Esto toma el valor del archivo .env
+    restart: unless-stopped
