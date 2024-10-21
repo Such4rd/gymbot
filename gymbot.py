@@ -1,4 +1,4 @@
-import sqlite3
+import db_utils as db
 import os
 from datetime import datetime
 import logging
@@ -13,113 +13,12 @@ from telegram.ext import (
     ContextTypes,
     CallbackQueryHandler
 )
+from dotenv import load_dotenv
 
+#cargar variables de entorno
+load_dotenv()
 
 TOKEN = os.getenv('TOKEN')
-
-
-
-
-
-
-# Conexión a la base de datos
-def conectar_db():
-    return sqlite3.connect('/app/gym.db')
-
-
-
-#crear tablas si no existen
-
-conectar_db().cursor().execute(
-    '''
-    CREATE TABLE IF NOT EXISTS grupos_musculares (
-    id_grupo INTEGER PRIMARY KEY AUTOINCREMENT,
-    nombre_grupo TEXT
-    )
-    '''
-)
-
-#Creación de la tabla ejercicios
-conectar_db().cursor().execute(
-    '''
-    CREATE TABLE IF NOT EXISTS ejercicios (
-    id_ejercicio INTEGER PRIMARY KEY AUTOINCREMENT,
-    nombre_ejercicio TEXT,
-    id_grupo INTEGER,
-    id_user TEXT,
-    date DATE,
-    FOREIGN KEY (id_grupo) REFERENCES grupos_musculares(id_grupo)
-)
-'''
-)
-
-#Creación de la tabla entrenamientos
-conectar_db().cursor().execute(
-    '''
-    CREATE TABLE IF NOT EXISTS entrenamientos (
-    id_entreno TEXT,
-    id_user TEXT,
-    date DATE,
-    coment TEXT,
-    PRIMARY KEY (id_entreno)
-    )'''
-)
-
-#Creación de la tabla series
-conectar_db().cursor().execute(
-    '''
-    CREATE TABLE IF NOT EXISTS series (
-    id_entreno TEXT,
-    id_grupo INTEGER,
-    id_ejercicio INTEGER,
-    id_serie INTEGER,
-    repes INTEGER,
-    peso REAL,
-    coment TEXT,
-    PRIMARY KEY (id_entreno, id_grupo, id_ejercicio, id_serie),
-    FOREIGN KEY (id_entreno) REFERENCES entrenamientos(id_entreno),
-    FOREIGN KEY (id_grupo) REFERENCES grupos_musculares(id_grupo),
-    FOREIGN KEY (id_ejercicio) REFERENCES ejercicios(id_ejercicio)
-    )
-    '''
-)
-
-#obtenemos grupos musculares
-def obtener_grupos_musculares():
-    conn = conectar_db()
-    cursor = conn.cursor()
-    cursor.execute("SELECT nombre_grupo FROM grupos_musculares")
-    grupos = cursor.fetchall()
-    conn.close()
-    return [g[0] for g in grupos] 
-
-def obtener_ejercicios_por_grupo(grupo):
-    conn = conectar_db()
-    cursor = conn.cursor()
-    cursor.execute("SELECT nombre_ejercicio FROM ejercicios WHERE id_grupo = (SELECT id_grupo FROM grupos_musculares WHERE nombre_grupo = ?)", (grupo,))
-    ejercicios = cursor.fetchall()
-    conn.close()
-    return [e[0] for e in ejercicios]  # Devuelve solo los nombres
-
-
-def generar_id_entreno(usuario):
-    fecha = datetime.now().strftime('%d%m%Y')  # Formato DíaMesAño
-    conn = conectar_db()
-    cursor = conn.cursor()
-    cursor.execute(
-        "SELECT COUNT(*) FROM ENTRENAMIENTOS WHERE ID_USER = ?",(usuario,)
-    )
-    # Obtener el resultado de la query
-    count = cursor.fetchone()[0]  # El resultado de COUNT(*) está en el primer (y único) elemento de la tupla
-
-    # Cerrar cursor y conexión
-    cursor.close()
-    conn.close()
-
-    # Generar el ID en formato '04082024-usuario-#entreno'
-    id_entreno = f"{fecha}-{usuario}-{count + 1}"  # Sumamos 1 para obtener el número de entreno siguiente
-    
-    return id_entreno
 
 
 # Logging config
@@ -129,16 +28,13 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Definir estados
-START, GRUPO_MUSCULAR, EJERCICIO, SERIE, OPCIONES, SAVE = range(6)
+START, GRUPO_MUSCULAR, EJERCICIO, SERIE, OPCIONES, SAVE, ENTRENOS, TRAIN_LOAD = range(8)
 
-# Grupos musculares y ejercicios de ejemplo
-#GRUPOS_MUSCULARES = ["Pecho", "Espalda", "Piernas", "Hombros", "Biceps", "Triceps"]
-#EJERCICIOS = {
-#    "Pecho": ["Press banca", "Aperturas", "Flexiones"],
-#    "Espalda": ["Dominadas", "Remo", "Peso muerto"],
-#    "Piernas": ["Sentadillas", "Prensa", "Zancadas"],
-    # Y así con los demás grupos musculares...
-#}
+
+
+#ESTADO ENTRENOS SE IRA CUANDO SE QUIERA REPETIR UN ENTRENO
+#ESTADO TRAIN_LOAD_EJERCICIO
+
 
 # Función para agrupar los botones de 3 en 3
 def grouped_buttons(buttons, group_size=3):
@@ -151,10 +47,23 @@ def log_training(context):
         context.user_data['training_log'] = []
 
 
+# Función de manejo de errores
+async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    logger.error(f'Error causado por {update} - {context.error}')
+    
+    if update.message:
+        await update.message.reply_text(
+            "¡Oops! Ha ocurrido un error. Por favor, intenta de nuevo más tarde."
+        )
+    elif update.callback_query:
+        await update.callback_query.answer("¡Oops! Ha ocurrido un error. Por favor, intenta de nuevo más tarde.")
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Inicia la conversación y ofrece opciones de entrenamiento."""
-    inline_board_button = [[InlineKeyboardButton("Nuevo entrenamiento",callback_data='NEW_EJE'), InlineKeyboardButton("Finalizar entrenamiento",callback_data='END')]] # lista de opciones
+    inline_board_button = [
+        [InlineKeyboardButton("Nuevo entrenamiento",callback_data='NEW_EJE')], 
+        [InlineKeyboardButton("Cargar entrenamiento",callback_data='LOAD')],
+        [InlineKeyboardButton("Finalizar entrenamiento",callback_data='END')]] # lista de opciones
 
     await update.message.reply_text(
         "¿Quiere realizar un nuevo entrenamiento?",
@@ -173,7 +82,7 @@ async def cancelar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
 # Función que procesa los callback_data de grupos musculares
 # ST: START -> CH : GESTIONA EL PRIMER PASO Y MUESTRA GRUPOS MUSCULARES
-async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+async def procesar_start(update: Update, context: ContextTypes.DEFAULT_TYPE,conexion) -> int:
     """Procesa la selección del botón."""
     query = update.callback_query
     await query.answer()  # Es necesario responder al callback para evitar que el botón quede "en espera"
@@ -181,7 +90,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     # Verificar qué botón fue presionado basado en el callback_data
     if query.data == 'NEW_EJE':
 
-        GRUPOS_MUSCULARES = obtener_grupos_musculares()
+        GRUPOS_MUSCULARES = db.obtener_grupos_musculares(conexion)
         #configuramos tantos botones como grupos musculares
         inline_board = grouped_buttons([InlineKeyboardButton(musculo,callback_data=musculo) for musculo in GRUPOS_MUSCULARES])
         inline_board.append([InlineKeyboardButton("Nuevo grupo muscular",callback_data="NEW_GRU")])
@@ -192,11 +101,23 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         )
 
         return GRUPO_MUSCULAR
+    elif query.data == 'LOAD':
+         # lista de opciones
+        user = query.from_user.name.upper()
+        ENTRENAMIENTOS = db.obtener_entrenos(conexion,user)
+        inline_board_lista =  grouped_buttons([InlineKeyboardButton(entreno[1],callback_data=entreno[0]) for entreno in ENTRENAMIENTOS])
+
+        await query.edit_message_text(
+            text = "Seleccione un entreno para ver su resumen:",
+            reply_markup=InlineKeyboardMarkup(inline_board_lista)
+        )
+        
+        return ENTRENOS
     
     elif query.data == 'END':
         return ConversationHandler.END
-#ST: GRUPO_MUSCULAR -> CH - SELECCION DE GRUPO MUSCULAR Y MUESTRA LISTA DE EJERCICIOS DE ESE GRUPO 
-async def button_callback_2(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+# SELECCION DE GRUPO MUSCULAR Y MUESTRA LISTA DE EJERCICIOS DE ESE GRUPO 
+async def procesar_grupo_muscular(update: Update, context: ContextTypes.DEFAULT_TYPE,conexion) -> int:
     """Procesa la selección del botón."""
     query = update.callback_query
     await query.answer()  # Es necesario responder al callback para evitar que el botón quede "en espera"
@@ -204,7 +125,7 @@ async def button_callback_2(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     # Verificar qué botón fue presionado basado en el callback_data
     if query.data != "NEW_GRU" and query.data != 'END':    
         context.user_data['grupo'] = query.data
-        EJERCICIOS = obtener_ejercicios_por_grupo(query.data)
+        EJERCICIOS = db.obtener_ejercicios_por_grupo(conexion,query.data)
         inline_board_lista = grouped_buttons([InlineKeyboardButton(ejercicio,callback_data=ejercicio) for ejercicio in EJERCICIOS])
         inline_board_lista.append([InlineKeyboardButton("Nuevo ejercicio",callback_data="NEW_EJE")])
         inline_board_lista.append([InlineKeyboardButton("Finalizar entreno",callback_data="END")])
@@ -229,7 +150,7 @@ async def button_callback_2(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         return SAVE   
     
 #ST: EJERCICIO -> CH - SELECCIÓN DE EJERCICIO
-async def button_callback_3(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+async def procesar_ejercicio(update: Update, context: ContextTypes.DEFAULT_TYPE,conexion) -> int:
     """Procesa la selección del botón."""
     query = update.callback_query
     await query.answer()  # Es necesario responder al callback para evitar que el botón quede "en espera"
@@ -258,7 +179,7 @@ async def button_callback_3(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
     return SERIE
 # ST: SERIE -_ MESSAGE_HANDLER
-async def datos_serie(update: Update, context: ContextTypes.DEFAULT_TYPE) ->int:
+async def procesar_serie(update: Update, context: ContextTypes.DEFAULT_TYPE, conexion) ->int:
     datos_serie = update.message.text
     patron = r"^\d+,\d+$"
 
@@ -323,7 +244,7 @@ async def datos_serie(update: Update, context: ContextTypes.DEFAULT_TYPE) ->int:
 
 
 #ST : OPCIONES 
-async def button_callback_4(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+async def procesar_opciones(update: Update, context: ContextTypes.DEFAULT_TYPE,conexion) -> int:
     """Procesa la selección del botón."""
     query = update.callback_query
     await query.answer()
@@ -338,7 +259,7 @@ async def button_callback_4(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     
     elif query.data == "NEW_EJE":
         # Volver al inicio del flujo para seleccionar un nuevo ejercicio
-        GRUPOS_MUSCULARES = obtener_grupos_musculares()
+        GRUPOS_MUSCULARES = db.obtener_grupos_musculares(conexion)
         inline_board = grouped_buttons([InlineKeyboardButton(musculo,callback_data=musculo) for musculo in GRUPOS_MUSCULARES])
         inline_board.append([InlineKeyboardButton("Nuevo grupo muscular",callback_data="NEW_GRU")])
         inline_board.append([InlineKeyboardButton("Finalizar entreno",callback_data="END")])
@@ -390,25 +311,28 @@ def mostrar_resumen(update: Update, context: ContextTypes.DEFAULT_TYPE) -> str:
 
 
 # Gestión de nuevos ejercicios, grupos, etc:
-async def gestion_nuevo_grupo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+async def gestion_nuevo_grupo(update: Update, context: ContextTypes.DEFAULT_TYPE,conexion) -> int:
     nuevo = update.message.text
 
     # Verificar si es valido el string
-    if not isinstance(nuevo, str) or not nuevo.strip() or any(char.isdigit() for char in nuevo):
+    if not isinstance(nuevo, str) or not nuevo.strip() or any(char.isdigit() for char in nuevo) or len(nuevo) < 3 or len(nuevo) > 30:
         await update.message.reply_text(
-            text="*Formato incorrecto*\n Indique el nombre del grupo:"
+            text="*Formato incorrecto*\n Indique el nombre del grupo(3-30 caracteres, sin números):"
         )
         return GRUPO_MUSCULAR
+    
     nuevo = nuevo.capitalize()
+
+    # Verificar si el grupo ya existe
+    if db.grupo_existe(conexion, nuevo):
+        await update.message.reply_text(
+            text="*El grupo ya existe en la base de datos.* Indique un nombre diferente:"
+        )
+        return GRUPO_MUSCULAR
+
     context.user_data['grupo'] = nuevo
 
-    # Insertar grupo
-    conn = conectar_db()
-    cursor = conn.cursor()
-    cursor.execute("INSERT INTO grupos_musculares (nombre_grupo) VALUES (?)", (nuevo,))
-                   
-    conn.commit()
-    conn.close()
+    db.insertar_grupo(conexion,nuevo)
 
     await update.message.reply_text(
         "Indique el nombre del nuevo ejercicio:",
@@ -418,30 +342,32 @@ async def gestion_nuevo_grupo(update: Update, context: ContextTypes.DEFAULT_TYPE
     return EJERCICIO
 
 # Gestión de nuevos ejercicios, grupos, etc:
-async def gestion_nuevo_ejercicio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+async def gestion_nuevo_ejercicio(update: Update, context: ContextTypes.DEFAULT_TYPE, conexion) -> int:
     nuevo = update.message.text
 
     # Verificar si es valido el string
-    if not isinstance(nuevo, str) or not nuevo.strip() or any(char.isdigit() for char in nuevo):
+    if not isinstance(nuevo, str) or not nuevo.strip() or any(char.isdigit() for char in nuevo) or len(nuevo) < 3 or len(nuevo) > 30:
         await update.message.reply_text(
-            text="*Formato incorrecto*\n Indique el nombre del ejercicio:"
+            text="*Formato incorrecto*\n Indique el nombre del ejercicio(3-30 caracteres, sin números)"
         )
         return EJERCICIO
     nuevo = nuevo.capitalize()
     grupo = context.user_data['grupo']
+
+    # Verificar si el ejercicio ya existe
+    if db.ejercicio_existe(conexion, nuevo):
+        await update.message.reply_text(
+            text="*El ejercicio ya existe en la base de datos.* Indique un nombre diferente:"
+        )
+        return EJERCICIO
+
+
     context.user_data['ejercicio'] = nuevo
 
-    # Insertar ejercicio en bs
-    conn = conectar_db()
-    cursor = conn.cursor()
-    cursor.execute("SELECT id_grupo FROM grupos_musculares WHERE nombre_grupo = ?", (grupo,))
-    result = cursor.fetchone()
-    # Suponiendo que tienes una tabla 'grupos_musculares'
-    cursor.execute("INSERT INTO ejercicios (nombre_ejercicio, id_grupo, id_user, date) VALUES (?, ?, ?, ?)", 
-                   (nuevo, result[0], update.message.from_user.id, update.message.date.date() ))           
-    conn.commit()
-    conn.close()
 
+    db.insertar_ejercicio(conexion,nuevo,grupo,update.message.from_user.id,update.message.date.date())
+    # Insertar ejercicio en bs
+    
     await update.message.reply_text(
         text = "Indica las repeticiones y el peso (formato: reps, peso(kg)):",
         reply_markup=None
@@ -450,7 +376,7 @@ async def gestion_nuevo_ejercicio(update: Update, context: ContextTypes.DEFAULT_
     return SERIE
 
 #Guardamos entreno en BBDD
-async def save_entreno(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+async def procesar_guardado(update: Update, context: ContextTypes.DEFAULT_TYPE,conexion) -> int:
     """Procesa la selección del botón."""
     query = update.callback_query
     await query.answer()  # Es necesario responder al callback para evitar que el botón quede "en espera"
@@ -461,73 +387,81 @@ async def save_entreno(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
         #recoger usuario
         usuario = query.from_user.name
         usuario = usuario.replace('@','').upper() # Obtén el nombre completo del usuario de Telegram
-        id_entreno = generar_id_entreno(usuario)  # Genera el ID del entrenamiento
+        id_entreno = db.generar_id_entreno(conexion,usuario)  # Genera el ID del entrenamiento
 
         # Obtener la fecha actual
         fecha_actual = datetime.now().strftime('%Y-%m-%d')
 
+        datos_entreno = context.user_data['training_log']
+        db.insertar_entreno(conexion, datos_entreno,usuario,fecha_actual,id_entreno)
         # Insertar entrenamiento en la tabla de entrenamientos
-        conn = conectar_db()
-        cursor = conn.cursor()
-        cursor.execute("INSERT INTO entrenamientos (id_entreno, id_user, date, coment) VALUES (?, ?, ?, ?)", 
-                       (id_entreno, usuario, fecha_actual, ''))
-
-        # Insertar series en la tabla de series
-        for registro in context.user_data['training_log']:
-            grupo = registro['grupo']
-            ejercicio = registro['ejercicio']
-            for i, (repes, peso) in enumerate(registro['serie'],1):
-                cursor.execute("""
-                    INSERT INTO series (id_entreno, id_grupo, id_ejercicio, id_serie, repes, peso, coment)
-                    VALUES (?, (SELECT id_grupo FROM grupos_musculares WHERE nombre_grupo = ?), 
-                    (SELECT id_ejercicio FROM ejercicios WHERE nombre_ejercicio = ?), ?, ?, ?, '')
-                """, (id_entreno, grupo, ejercicio, i, repes, peso))
-        
-        conn.commit()
-        conn.close()
 
         await query.edit_message_text(
-            text = "ENTRENO REGISTRADO CORRECTAMENTE! HASTA EL PROXIMO ENTRENO",
+            text = f"¡Maravilla! Entreno completado y registrado! \n Hasta la proxima {usuario}",
             reply_markup=None
         )
         context.user_data['training_log'] = []
         return ConversationHandler.END
     else:
         await query.edit_message_text(
-            text = "[ERROR] Entrenamiento vacio, empiece de nuevo (/start)",
+            text = "[!] Entrenamiento vacio, empiece de nuevo (/start)",
             reply_markup=None
         )
         return ConversationHandler.END
+
+
+async def load_entreno(update: Update, context: ContextTypes.DEFAULT_TYPE,conexion) -> int:
+    query = update.callback_query
+    await query.answer()
+
+    datos_entreno = query.data #id del entreno
+    
+    context.user_data['training_log'] = db.load_entreno(conexion,datos_entreno)
+    
+    await query.edit_message_text(
+            mostrar_resumen(update,context),
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Confirmar guardado de entreno",callback_data="SAVE")]])
+        )
+    return TRAIN_LOAD
 
 
 
 def main() -> None:
     """Inicia el bot."""
     application = Application.builder().token(TOKEN).build()
+    #mantenemos la conexión a base de datos mientras se lleva la conversacion:
+    with db.conectar_db() as con:
 
-    # Manejador de la conversación
-    conv_handler = ConversationHandler(
-        entry_points=[CommandHandler("start", start)],
-        states={
-            START: [CallbackQueryHandler(button_callback)],
-            GRUPO_MUSCULAR: [
-                CallbackQueryHandler(button_callback_2),
-                MessageHandler(filters.TEXT,gestion_nuevo_grupo)
-            ],
-            EJERCICIO: [
-                CallbackQueryHandler(button_callback_3),
-                MessageHandler(filters.TEXT,gestion_nuevo_ejercicio)
-            ],
-            SERIE: [MessageHandler(filters.TEXT, datos_serie)],
-            OPCIONES: [CallbackQueryHandler(button_callback_4)],
-            SAVE:[CallbackQueryHandler(save_entreno)]
-        },
-        fallbacks=[CommandHandler("cancel", cancelar)],
-    )
+        # Manejador de la conversación
+        conv_handler = ConversationHandler(
+            entry_points=[CommandHandler("start", start)],
+            states={
+                START: [CallbackQueryHandler(lambda update, context: procesar_start(update, context, conexion=con))],
+                ENTRENOS: [CallbackQueryHandler(lambda update, context: load_entreno(update, context, conexion=con))],
+                TRAIN_LOAD: [
+                    CallbackQueryHandler(lambda update, context: load_entreno(update, context, conexion=con))
+                ],
+                GRUPO_MUSCULAR: [
+                    CallbackQueryHandler(lambda update, context: procesar_grupo_muscular(update, context, conexion=con)),
+                    MessageHandler(filters.TEXT,lambda update, context: gestion_nuevo_grupo(update, context, conexion=con))
+                ],
+                EJERCICIO: [
+                    CallbackQueryHandler(lambda update, context: procesar_ejercicio(update, context, conexion=con)),
+                    MessageHandler(filters.TEXT,lambda update, context: gestion_nuevo_ejercicio(update, context, conexion=con))
+                ],
+                SERIE: [
+                    MessageHandler(filters.TEXT, lambda update, context: procesar_serie(update, context, conexion=con))
+                ],
+                OPCIONES: [CallbackQueryHandler(lambda update, context: procesar_opciones(update, context, conexion=con))],
+                SAVE:[CallbackQueryHandler(lambda update, context: procesar_guardado(update, context, conexion=con))]
+            },
+            fallbacks=[CommandHandler("cancel", cancelar)],
+        )
 
-    application.add_handler(conv_handler)
-    # Ejecutar el bot
-    application.run_polling()
+        
+        application.add_handler(conv_handler)
+        # Ejecutar el bot
+        application.run_polling()
 
 if __name__ == "__main__":
     main()
