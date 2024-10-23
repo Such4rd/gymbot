@@ -1,12 +1,13 @@
 #En este archivo gestionaremos todo lo relacionado con base de datos
 import sqlite3
+import conexion as ruta
 from datetime import datetime
 from collections import defaultdict
 
 
 # Conexión a la base de datos
 def conectar_db():
-    return sqlite3.connect('c:/santi/gymbot/gym.db')
+    return sqlite3.connect(ruta.RUTA)
 
 
 def inicializar_db(conexion):
@@ -188,5 +189,5 @@ def load_entreno(conexion, id_entreno):
 
 # Convertir a una lista de diccionarios
     resultado = list(agrupados.values())
-    print 
+    
     return resultado
