@@ -128,12 +128,12 @@ def insertar_entreno(conexion, datos_entreno, user, fecha,id_entreno):
         for registro in datos_entreno:
             grupo = registro['grupo']
             ejercicio = registro['ejercicio']
-            for i, (repes, peso) in enumerate(registro['serie'],1):
+            for i, (repes, peso, coment) in enumerate(registro['serie'],1):
                 cursor.execute("""
                     INSERT INTO series (id_entreno, id_grupo, id_ejercicio, id_serie, repes, peso, coment)
                     VALUES (?, (SELECT id_grupo FROM grupos_musculares WHERE nombre_grupo = ?), 
-                    (SELECT id_ejercicio FROM ejercicios WHERE nombre_ejercicio = ?), ?, ?, ?, '')
-                """, (id_entreno, grupo, ejercicio, i, repes, peso))
+                    (SELECT id_ejercicio FROM ejercicios WHERE nombre_ejercicio = ?), ?, ?, ?, ?)
+                """, (id_entreno, grupo, ejercicio, i, repes, peso, coment))
         
         conexion.commit()
     
@@ -165,7 +165,7 @@ def obtener_entrenos(conexion, user):
 def load_entreno(conexion, id_entreno):
     cursor = conexion.cursor()
     cursor.execute("""
-        SELECT gm.nombre_grupo, e.nombre_ejercicio, s.repes, s.peso
+        SELECT gm.nombre_grupo, e.nombre_ejercicio, s.repes, s.peso, s.coment
         FROM series s
         JOIN grupos_musculares gm ON s.id_grupo = gm.id_grupo
         JOIN ejercicios e ON s.id_ejercicio = e.id_ejercicio
@@ -179,13 +179,13 @@ def load_entreno(conexion, id_entreno):
     agrupados = defaultdict(lambda: {'grupo': '', 'ejercicio': '', 'serie': []})
 
 # Recorrer los registros para agruparlos
-    for grupo, ejercicio, serie, peso in entreno_bd:
+    for grupo, ejercicio, serie, peso, coment in entreno_bd:
         key = (grupo, ejercicio)  # Llave para identificar un grupo/ejercicio
         if agrupados[key]['grupo'] == '':  # Si no existe el grupo/ejercicio, inicializamos
             agrupados[key]['grupo'] = grupo
             agrupados[key]['ejercicio'] = ejercicio
         # Añadir la serie y el peso a la lista
-        agrupados[key]['serie'].append((str(serie), str(peso)))
+        agrupados[key]['serie'].append((str(serie), str(peso), str(coment)))
 
 # Convertir a una lista de diccionarios
     resultado = list(agrupados.values())

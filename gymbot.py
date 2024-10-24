@@ -65,8 +65,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         [InlineKeyboardButton("Cargar entrenamiento",callback_data='LOAD')],
         [InlineKeyboardButton("Finalizar entrenamiento",callback_data='END')]] # lista de opciones
 
+    context.user_data['training_log'] = [] 
+    user = update.effective_user  # Obtiene el usuario que interactuó
+    username = user.username if user.username else user.first_name  # Se obtiene el nombre de usuario o el nombre
+    
     await update.message.reply_text(
-        "¿Quiere realizar un nuevo entrenamiento?",
+        f"Bueeeenaaassss {username} !!! Bienvenido! ",
         reply_markup=InlineKeyboardMarkup(inline_board_button)
     )
 
@@ -115,7 +119,11 @@ async def procesar_start(update: Update, context: ContextTypes.DEFAULT_TYPE,cone
         return ENTRENOS
     
     elif query.data == 'END':
+        await query.edit_message_text(
+            text = "Hasta luego Maricarmeeee!!:"
+        )
         return ConversationHandler.END
+    
 # SELECCION DE GRUPO MUSCULAR Y MUESTRA LISTA DE EJERCICIOS DE ESE GRUPO 
 async def procesar_grupo_muscular(update: Update, context: ContextTypes.DEFAULT_TYPE,conexion) -> int:
     """Procesa la selección del botón."""
@@ -181,12 +189,14 @@ async def procesar_ejercicio(update: Update, context: ContextTypes.DEFAULT_TYPE,
 # ST: SERIE -_ MESSAGE_HANDLER
 async def procesar_serie(update: Update, context: ContextTypes.DEFAULT_TYPE, conexion) ->int:
     datos_serie = update.message.text
-    patron = r"^\d+,\d+$"
+    patron = r"^\d+,\d+(\.\d+)?(,\s*.*)?$"
+    
 
     if re.match(patron,datos_serie):
         datos = datos_serie.split(',')
         repes = datos[0]
         peso = datos[1]
+        coment = datos[2]
 
         # Registrar ejercicio en el log
         grupo_actual = context.user_data.get('grupo', '')
@@ -203,7 +213,7 @@ async def procesar_serie(update: Update, context: ContextTypes.DEFAULT_TYPE, con
         found = False
         for registro in context.user_data['training_log']:
             if registro['grupo'] == grupo_actual and registro['ejercicio'] == ejercicio_actual:
-                registro['serie'].append((repes, peso))  # Añadir nueva serie (reps, peso)
+                registro['serie'].append((repes, peso, coment))  # Añadir nueva serie (reps, peso)
                 found = True
                 break
 
@@ -212,7 +222,7 @@ async def procesar_serie(update: Update, context: ContextTypes.DEFAULT_TYPE, con
             nuevo_registro = {
                 'grupo': grupo_actual,
                 'ejercicio': ejercicio_actual,
-                'serie': [(repes, peso)]  # Iniciar la lista de series con la nueva serie
+                'serie': [(repes, peso, coment)]  # Iniciar la lista de series con la nueva serie
             }
             context.user_data['training_log'].append(nuevo_registro)
 
@@ -284,7 +294,7 @@ async def procesar_opciones(update: Update, context: ContextTypes.DEFAULT_TYPE,c
     elif query.data == "END":
         await query.edit_message_text(
             mostrar_resumen(update,context),
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Confirmar guardado de entreno",callback_data="SAVE")]])
+             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Confirmar guardado de entreno",callback_data="SAVE")]])
         )
         return SAVE
 
@@ -304,9 +314,12 @@ def mostrar_resumen(update: Update, context: ContextTypes.DEFAULT_TYPE) -> str:
         grupo = grupos['grupo']
         nombre_ejercicio = grupos['ejercicio']
         texto_resumen += f"{indice}. {grupo}: {nombre_ejercicio}\n"
-        for i, (reps, peso) in enumerate(grupos['serie'],1):
-            texto_resumen += f"\t\t {i}. {reps} reps, {peso} KG.\n"
-    
+        for i, (reps, peso, coment) in enumerate(grupos['serie'],1):
+            texto_resumen += f"\t\t {i}. {reps} reps, {peso} KG."
+            if coment:
+           	 texto_resumen += f"({coment})\n"
+            else: 
+            	texto_resumen += "\n"   
     return texto_resumen
 
 
@@ -419,10 +432,9 @@ async def load_entreno(update: Update, context: ContextTypes.DEFAULT_TYPE,conexi
     context.user_data['training_log'] = db.load_entreno(conexion,datos_entreno)
     
     await query.edit_message_text(
-            mostrar_resumen(update,context),
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Confirmar guardado de entreno",callback_data="SAVE")]])
+           f"{mostrar_resumen(update,context) }"
         )
-    return TRAIN_LOAD
+    return ConversationHandler.END
 
 
 
