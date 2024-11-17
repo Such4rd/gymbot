@@ -1,3 +1,2 @@
-
 RUTA = '/app/gym.db'
 
