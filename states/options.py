@@ -10,7 +10,7 @@ async def options_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     """Procesa la selección del botón."""
     query = update.callback_query
     await query.answer()
-    await rt.reset_timer(update, context)
+    #await rt.reset_timer(update, context)
     if query.data == "NEW_SER":
         await query.edit_message_text(
             text = "Indica las repeticiones y el peso (formato: reps, peso(kg),coment):",

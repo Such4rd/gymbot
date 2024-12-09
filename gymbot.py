@@ -5,7 +5,8 @@ from datetime import datetime
 import logging
 from telegram import  ReplyKeyboardRemove, Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import (
-    Application
+    Application,
+    JobQueue
 )
 from dotenv import load_dotenv
 from handlers import conv_handler

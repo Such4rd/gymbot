@@ -24,13 +24,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         f"Bueeeenaaassss {username} !!! Bienvenido! ",
         reply_markup=InlineKeyboardMarkup(inline_board_button)
     )
-    await rt.reset_timer(update, context, context.application.job_queue)
+    #await rt.reset_timer(update, context)
 
     return START
 
 async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Procesa la selección del botón o el comando."""
-    await rt.reset_timer(update, context,context.application.job_queue)
+    #await rt.reset_timer(update, context)
     # Verificar si la función fue llamada desde un CallbackQuery o un CommandHandler
     if update.callback_query:
         query = update.callback_query

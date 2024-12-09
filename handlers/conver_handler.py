@@ -29,6 +29,6 @@ conv_handler = ConversationHandler(
     },
     fallbacks=[
         CommandHandler("cancel", cancel_handler),
-        CommandHandler("workouts", workout_handler)
+        CommandHandler("workouts", start_handler)
     ]
 )

@@ -13,7 +13,7 @@ async def exercise_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     """Procesa la selección del botón."""
     query = update.callback_query
     await query.answer()  # Es necesario responder al callback para evitar que el botón quede "en espera"
-    await rt.reset_timer(update, context)
+    #await rt.reset_timer(update, context)
     # Verificar qué botón fue presionado basado en el callback_data
     logger.info("Estamos gestionando la selección del ejercicio")
     if query.data == "NEW_EJE":

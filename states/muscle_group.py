@@ -10,7 +10,7 @@ async def muscle_group_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     """Procesa la selección del botón."""
     query = update.callback_query
     await query.answer()  # Es necesario responder al callback para evitar que el botón quede "en espera"
-    await rt.reset_timer(update, context)
+    #await rt.reset_timer(update, context)
     # Verificar qué botón fue presionado basado en el callback_data
     if query.data != "NEW_GRU" and query.data != 'END':    
         context.user_data['grupo'] = query.data

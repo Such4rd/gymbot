@@ -31,7 +31,7 @@ restablecer_servicio() {
 # Función para ver los logs del servicio, ultimas 5 lineas
 ver_logs() {
     echo "Mostrando las últimas 5 líneas de los logs:"
-    sudo journalctl -u gymbot.service -n 5 --no-pager
+    sudo journalctl -u gymbot.service -n 10 --no-pager
     echo "----------------------"
     echo "Presiona cualquier tecla para volver al menú..."
     read -n 1 -s # Espera a que el usuario presione una tecla

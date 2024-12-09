@@ -13,7 +13,7 @@ async def save_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     """Procesa la selección del botón."""
     query = update.callback_query
     await query.answer()  # Es necesario responder al callback para evitar que el botón quede "en espera"
-    await rt.reset_timer(update, context)
+    #await rt.reset_timer(update, context)
     # Verificar qué botón fue presionado basado en el callback_data
     
     if query.data == "SAVE" and 'training_log' in context.user_data:

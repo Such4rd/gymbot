@@ -1,49 +1,45 @@
 from telegram import Update
-from telegram.ext import (
-    CommandHandler,
-    ConversationHandler,
-    MessageHandler,
-    filters,
-    CallbackQueryHandler,
-    ContextTypes,
-    JobQueue,
-    Job
-)
-from utils.constants import *
+from telegram.ext import ContextTypes
 import logging
+from utils.constants import TIMEOUT_DURATION
 
-async def timeout_handler(update, context:ContextTypes.DEFAULT_TYPE):
+async def timeout_handler(update, context: ContextTypes.DEFAULT_TYPE):
     """Función que se llama cuando la conversación se cierra por inactividad."""
     job = context.job
     await context.bot.send_message(job.chat_id, text="Se ha perdido la conexión por inactividad.")
-    # Finalizar el flujo de conversación
-    context.application.current_conversation_handler.end()
+    context.application.current_conversation_handler.end()  # Finalizar conversación
 
-def remove_inactivity_timer(context: ContextTypes.DEFAULT_TYPE, chat_id: str,job_queue):
-    """Elimina cualquier temporizador de inactividad existente para evitar múltiples timers."""
-    # Verificar si job_queue existe en el contexto
-    if not hasattr(context, "job_queue") or context.job_queue is None:
-        print("Error: context no tiene 'job_queue'")
-        return  # Salir de la función si no hay job_queue
+def remove_inactivity_timer(context: ContextTypes.DEFAULT_TYPE, chat_id: str):
+    """Elimina cualquier temporizador de inactividad existente."""
+    if not hasattr(context.application, "job_queue") or context.application.job_queue is None:
+        logging.error("Error: 'job_queue' no está disponible en la aplicación.")
+        return
 
-    # Obtener trabajos por nombre
-    current_jobs = context.job_queue.get_jobs_by_name(chat_id)
+    job_queue = context.application.job_queue
+    current_jobs = job_queue.get_jobs_by_name(chat_id)
     for job in current_jobs:
         job.schedule_removal()
-        
-async def reset_timer(update, context: ContextTypes.DEFAULT_TYPE, job_queue):
-    """Configura un temporizador de inactividad para cancelar la conversación si no hay respuesta."""
-    # Obtener el chat_id según el tipo de update (Message o CallbackQuery)
-    if not hasattr(context, 'job_queue') or context.job_queue is None:
-        logging.info("Error: 'job_queue' no está disponible en el contexto")
-        return  # Sale de la función si no hay 'job_queue'
+    logging.info(f"Timers eliminados para chat_id: {chat_id}")
+
+async def reset_timer(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Configura un temporizador de inactividad."""
+    logging.info(f"VALOR JOBQUEUEEUEUE: {context.application.job_queue}")
+    if not hasattr(context.application, 'job_queue') or context.application.job_queue is None:
+        logging.error("Error: 'job_queue' no está disponible en la aplicación.")
+        return
+
+    # Determinar el chat_id
+    chat_id = (
+        update.message.chat_id
+        if update.message
+        else update.callback_query.message.chat_id
+    )
     
-    if update.message:
-        chat_id = update.message.chat_id
-    elif update.callback_query:
-        chat_id = update.callback_query.message.chat_id
-    elif update.effective_chat:
-        chat_id = update.effective_chat.id
-    remove_inactivity_timer(context,str(chat_id),job_queue)
-    
-    context.job.run_once(timeout_handler, TIMEOUT_DURATION, chat_id=chat_id, name=str(chat_id))
+    # Elimina temporizadores previos
+    remove_inactivity_timer(context, str(chat_id))
+
+    # Agregar nuevo temporizador
+    context.application.job_queue.run_once(
+        timeout_handler, TIMEOUT_DURATION, chat_id=chat_id, name=str(chat_id)
+    )
+    logging.info(f"Nuevo temporizador configurado para chat_id: {chat_id}")

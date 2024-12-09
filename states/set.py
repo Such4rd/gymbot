@@ -9,7 +9,7 @@ from utils import reset as rt
 async def set_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->int:
     datos_serie = update.message.text
     patron = r"^\d+,\d+(\.\d+)?(,\s*.*)?$"
-    await rt.reset_timer(update, context)
+    #await rt.reset_timer(update, context)
     
 
     if re.match(patron,datos_serie):
