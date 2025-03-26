@@ -41,6 +41,7 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
         data = 'LOAD' 
     # Verificar qué botón fue presionado basado en el callback_data
     if data == 'NEW_EJE':
+        #muscles = db.obtener_grupos_musculares()
         muscles = db.obtener_grupos_musculares()
         #configuramos tantos botones como grupos musculares
         inline_board = hp.grouped_buttons([InlineKeyboardButton(musculo,callback_data=musculo) for musculo in muscles])

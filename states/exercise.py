@@ -30,12 +30,50 @@ async def exercise_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         )
         return SAVE 
     
+    if not "counter_repes" in context.user_data:
+        context.user_data["counter_repes"] = 0
+
+    if not "counter_peso" in context.user_data:
+        context.user_data["counter_peso"] = 0
+    if not "intervalo" in context.user_data:
+        context.user_data["intervalo"] = 5
+
     context.user_data['ejercicio'] = query.data
+
+    
+    
+    counter_repes = context.user_data["counter_repes"]
+    counter_peso = context.user_data["counter_peso"]
+    intervalo = context.user_data["intervalo"] 
+    grupo = context.user_data["grupo"]
+    ejercicio = context.user_data["ejercicio"] 
+
+    
+    # Llamada a la función para obtener la mejor marca
+    mejor_marca_resultado = db.mejor_marca(grupo, ejercicio)
+
+    # Verificamos si no es None antes de hacer el unpacking
+    if mejor_marca_resultado:
+        repes_max, peso_max = mejor_marca_resultado
+        context.user_data["BEST_BRAND"] = f"{repes_max}-{peso_max} KG"
+        mejor_marca = context.user_data["BEST_BRAND"]
+    else:
+        mejor_marca = ""
+
+    keyboard = keyboard_series(counter_repes,counter_peso, intervalo,grupo,ejercicio,mejor_marca)
+
+
+
+
+    reply_markup = keyboard
+
+    
     await query.edit_message_text(
-        text = "Indica las repeticiones y el peso (formato: reps, peso(kg),coment):",
-        reply_markup=None
+        text = "Complete la serie",
+        reply_markup=reply_markup
     )
     
+   
     
     return SET
 

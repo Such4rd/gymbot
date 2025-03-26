@@ -8,13 +8,25 @@ from utils import helpers as hp
 from utils import reset as rt
 async def options_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Procesa la selección del botón."""
+
     query = update.callback_query
     await query.answer()
+    print(query.data)
     #await rt.reset_timer(update, context)
     if query.data == "NEW_SER":
+        mejor_marca_resultado = db.mejor_marca(context.user_data["grupo"], context.user_data["ejercicio"])
+
+        # Verificamos si no es None antes de hacer el unpacking
+        if mejor_marca_resultado:
+            repes_max, peso_max = mejor_marca_resultado
+            context.user_data["BEST_BRAND"] = f"{repes_max}-{peso_max} KG"
+            mejor_marca = context.user_data["BEST_BRAND"]
+        else:
+            mejor_marca = ""
+
         await query.edit_message_text(
-            text = "Indica las repeticiones y el peso (formato: reps, peso(kg),coment):",
-            reply_markup=None
+            text = "Completa la serie:",
+            reply_markup=keyboard_series( context.user_data["counter_repes"], context.user_data["counter_peso"], context.user_data["intervalo"], context.user_data["grupo"], context.user_data["ejercicio"],mejor_marca)
         )
        
         return SET
@@ -40,12 +52,14 @@ async def options_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         ]
         await query.edit_message_text(
             hp.mostrar_resumen(update,context),
-            reply_markup=InlineKeyboardMarkup(inline_opciones)
+            reply_markup=InlineKeyboardMarkup(inline_opciones),
+            parse_mode="Markdown"
         )
         return OPTIONS
     elif query.data == "END":
         await query.edit_message_text(
             hp.mostrar_resumen(update,context),
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Confirmar guardado de entreno",callback_data="SAVE")]])
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Confirmar guardado de entreno",callback_data="SAVE")]]),
+            parse_mode="Markdown"
         )
         return SAVE

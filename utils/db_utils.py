@@ -20,67 +20,8 @@ def conectar_db():
     except Exception as e:
         logger.error(f"Error al conectar a la base de datos: {e}")
         raise  # Lanza el error para que sea manejado más arriba)
-"""
-def inicializar_db():
-    # Crear tablas si no existen
-    try:
-        # Usamos 'with' para manejar automáticamente el cursor
-        with conectar_db().cursor() as cursor:
-            # Creación de la tabla grupos_musculares
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS grupos_musculares (
-                    id_grupo INTEGER PRIMARY KEY AUTOINCREMENT,
-                    nombre_grupo TEXT
-                )
-            ''')
 
-            # Creación de la tabla ejercicios
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS ejercicios (
-                    id_ejercicio INTEGER PRIMARY KEY AUTOINCREMENT,
-                    nombre_ejercicio TEXT,
-                    id_grupo INTEGER,
-                    id_user TEXT,
-                    date DATE,
-                    FOREIGN KEY (id_grupo) REFERENCES grupos_musculares(id_grupo)
-                )
-            ''')
 
-            # Creación de la tabla entrenamientos
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS entrenamientos (
-                    id_entreno TEXT,
-                    id_user TEXT,
-                    date DATE,
-                    coment TEXT,
-                    PRIMARY KEY (id_entreno)
-                )
-            ''')
-
-            # Creación de la tabla series
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS series (
-                    id_entreno TEXT,
-                    id_grupo INTEGER,
-                    id_ejercicio INTEGER,
-                    id_serie INTEGER,
-                    repes INTEGER,
-                    peso REAL,
-                    coment TEXT,
-                    PRIMARY KEY (id_entreno, uid_grupo, id_ejercicio, id_serie),
-                    FOREIGN KEY (id_entreno) REFERENCES entrenamientos(id_entreno),
-                    FOREIGN KEY (id_grupo) REFERENCES grupos_musculares(id_grupo),
-                    FOREIGN KEY (id_ejercicio) REFERENCES ejercicios(id_ejercicio)
-                )
-            ''')
-
-        print("Base de datos inicializada correctamente.")
-
-    except Exception as e:
-        print(f"[!] Error al inicializar la base de datos: {e}")
-#obtenemos grupos musculares
-
-"""
 
 def obtener_grupos_musculares():
     conexion = None
@@ -110,8 +51,54 @@ def obtener_grupos_musculares():
         # Cerrar el cursor y la conexión manualmente
         if conexion:
             conexion.close()
-          
-          
+
+
+def crear_tabla_grupos_musculares():
+    conexion = conectar_db()
+    cursor = conexion.cursor()
+    try:
+        sql = '''
+        CREATE TABLE IF NOT EXISTS grupos_musculares (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nombre_grupo TEXT NOT NULL
+        )
+        '''
+        cursor.execute(sql)
+        conexion.commit()
+        logger.info("Tabla 'grupos_musculares' creada con éxito.")
+    except sqlite3.Error as e:
+        logger.error(f"Error al crear la tabla: {e}")
+    finally:
+        if cursor:
+            cursor.close()
+        if conexion:
+            conexion.close()       
+def listar_tablas():
+    conexion = None
+    try:
+        # Conectar a la base de datos
+        conexion = conectar_db()
+        cursor = conexion.cursor()
+        
+        # Ejecutar la consulta para obtener todas las tablas
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
+        tablas = cursor.fetchall()
+
+        logger.info(f"Consulta ejecutada con éxito. Se obtuvieron {len(tablas)} tablas.")
+        
+        # Extraer y devolver una lista con los nombres de las tablas
+        result = [tabla[0] for tabla in tablas]
+        logger.info(f"Tablas encontradas: {result}")
+        
+        return result
+    
+    except Exception as e:
+        logger.error(f"[!] Error al obtener las tablas: {e}")
+        return []  # Retorna una lista vacía en caso de error
+    finally:
+        # Cerrar la conexión manualmente
+        if conexion:
+            conexion.close()
 def obtener_ejercicios_por_grupo(grupo):
     conexion = None
     try:
@@ -311,3 +298,39 @@ def load_entreno(id_entreno):
             conexion.close()
 
 
+def mejor_marca(grupo, ejercicio):
+    """Devuelve el peso máximo y las repeticiones correspondientes para un ejercicio y grupo muscular a través de todos los entrenamientos."""
+    conexion = None
+    try:
+        conexion = conectar_db()
+        cursor = conexion.cursor()
+        
+        # Consulta para obtener todas las series de un ejercicio y grupo muscular en todos los entrenamientos
+        cursor.execute("""
+            SELECT s.repes, s.peso
+            FROM series s
+            JOIN grupos_musculares gm ON s.id_grupo = gm.id_grupo
+            JOIN ejercicios e ON s.id_ejercicio = e.id_ejercicio
+            WHERE gm.nombre_grupo = ? AND e.nombre_ejercicio = ?
+        """, (grupo, ejercicio))
+        
+        # Recuperamos todas las repeticiones y pesos de las series
+        series = cursor.fetchall()
+        
+        # Si no hay registros, devolvemos None o un mensaje adecuado
+        if not series:
+            return None
+        
+        # Encontramos la mejor marca (peso máximo) y las repeticiones correspondientes
+        mejor_serie = max(series, key=lambda x: x[1])  # max por el peso (segundo elemento)
+        repes_maximas, mejor_peso = mejor_serie
+        
+        return repes_maximas, mejor_peso
+    
+    except Exception as e:
+        print(f"[!] Error al obtener la mejor marca: {e}")
+        return None
+    
+    finally:
+        if conexion:
+            conexion.close()

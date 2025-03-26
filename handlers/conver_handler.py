@@ -5,8 +5,8 @@ from telegram.ext import (
     filters,
     CallbackQueryHandler
 )
-from states import start, exercise_handler,muscle_group_handler,options_handler,save_handler,set_handler,start_handler,workout_handler,new_exercise_handler,cancel_handler
-
+from states import start, exercise_handler,muscle_group_handler,options_handler,save_handler,start_handler,workout_handler,new_exercise_handler,cancel_handler, set_handler_keyboard
+from counter import change_counter, reset_counter
 from utils.constants import *
 
 # Manejador de la conversación
@@ -23,8 +23,9 @@ conv_handler = ConversationHandler(
             CallbackQueryHandler( exercise_handler),
             MessageHandler(filters.TEXT & ~filters.COMMAND,new_exercise_handler)
         ],
-        SET: [MessageHandler(filters.TEXT & ~filters.COMMAND, set_handler)],
-        OPTIONS: [CallbackQueryHandler(options_handler)],
+        SET: [CallbackQueryHandler(change_counter)],
+        CONFIRM: [CallbackQueryHandler(set_handler_keyboard)],
+        OPTIONS:  [CallbackQueryHandler(options_handler)],
         SAVE:[CallbackQueryHandler(save_handler)]
     },
     fallbacks=[
